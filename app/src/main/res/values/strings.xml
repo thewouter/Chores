@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">Chores</string>
+    <string name="appwidget_text">Bs</string>
+    <string name="add_widget">Add widget</string>
+    <string name="app_widget_description">Track your chores</string>
+    <string name="b1">B1</string>
+</resources>
