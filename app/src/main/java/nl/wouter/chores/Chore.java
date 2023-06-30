@@ -8,13 +8,14 @@ import android.widget.Toast;
 
 import java.util.Calendar;
 
-public class Chore extends Button {
+public class Chore {
     private float reset_interval;
     private float countdown_time;
     private long pressed_time;
     private String name;
     private int presses;
     private static final int REQUIRED_PRESSES = 3;
+    private static final int MS_TRIGGER_INTERVAL = 1000;
     private String presser = "";
     public static final String DEFAULT_PRESSER = "W";
 
@@ -63,13 +64,12 @@ public class Chore extends Button {
      * Press the chore button, return whether to send the update
      * @return whether to mark the chore as done
      */
-    @Override
     public boolean press(Context context) {
         long currentTime = Calendar.getInstance().getTime().getTime();
         long delta = currentTime - this.pressed_time;
         Log.d("Widget", String.valueOf(delta));
         this.pressed_time = currentTime;
-        if (delta - Button.MS_TRIGGER_INTERVAL < 0) {
+        if (delta - Chore.MS_TRIGGER_INTERVAL < 0) {
             this.presses += 1;
         } else {
             this.presses = 1;

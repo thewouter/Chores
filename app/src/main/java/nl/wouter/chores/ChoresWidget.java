@@ -56,13 +56,6 @@ public class ChoresWidget extends AppWidgetProvider {
         return PendingIntent.getBroadcast(context, 0, intent, PendingIntent.FLAG_MUTABLE);
     }
 
-    protected PendingIntent getPendingSelfIntentCar(Context context, int button_id) {
-        Intent intent = new Intent(context, getClass());
-        intent.setAction("car_km");
-        intent.putExtra("buttonId", button_id);
-        return PendingIntent.getBroadcast(context, 0, intent, PendingIntent.FLAG_MUTABLE);
-    }
-
     @Override
     public void onReceive(Context context, Intent intent) {
         Log.d("Widget", "onReveive " + intent.getAction());
@@ -74,24 +67,7 @@ public class ChoresWidget extends AppWidgetProvider {
             AppWidgetManager appWidgetManager = AppWidgetManager.getInstance(context);
             int[] appWidgetIds = appWidgetManager.getAppWidgetIds(new ComponentName(context, ChoresWidget.class));
             onUpdate(context, appWidgetManager, appWidgetIds);
-        } else if (intent.getAction().equals("car_km")){
-            if (!Status.car.press(context)){
-                return;
-            }
-            Thread thread = new Thread(() -> {
-                try  {
-                    makePostCar();
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-            });
-            thread.start();
 
-            RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.chores_widget);
-            AppWidgetManager appWidgetManager = AppWidgetManager.getInstance(context);
-            int[] appWidgetIds = appWidgetManager.getAppWidgetIds(new ComponentName(context, ChoresWidget.class));
-            appWidgetManager.updateAppWidget(appWidgetIds, views);
-            reloadWidget(context, appWidgetManager, appWidgetIds);
         } else if (intent.getAction().contains("chore")) {
             Log.d("Widget", intent.getAction());
             Log.d("Widget", String.valueOf(intent.getIntExtra("buttonId", -1)));
@@ -116,7 +92,7 @@ public class ChoresWidget extends AppWidgetProvider {
 
             Thread thread = new Thread(() -> {
                 try  {
-                    makePostChore(name);
+                    makePost(name);
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
@@ -136,13 +112,10 @@ public class ChoresWidget extends AppWidgetProvider {
         Response response = client.newCall(request).execute();
         Log.d("Widget", "Load");
         String data = response.body().string();
-//        data = data.substring(5);
+        data = data.substring(5);
         Log.d("Widget", data);
         try {
-            JSONObject largeJsonObject = new JSONObject(data);
-            Log.d("Widget", String.valueOf(largeJsonObject));
-            JSONArray jsonArray = largeJsonObject.getJSONArray("chores");
-            Log.d("Widget", String.valueOf(jsonArray));
+            JSONArray jsonArray = new JSONArray(data);
             ArrayList<Chore> chores = new ArrayList<>();
             for(int i = 0 ; i < jsonArray.length(); i ++) {
                 JSONObject jsonObject = jsonArray.getJSONObject(i);
@@ -154,7 +127,6 @@ public class ChoresWidget extends AppWidgetProvider {
                 chores.add(chore);
             }
             Status.chores = chores;
-            Status.car.setCar_km(largeJsonObject.getInt("car_km"));
         } catch (JSONException e) {
             e.printStackTrace();
         }
@@ -165,38 +137,11 @@ public class ChoresWidget extends AppWidgetProvider {
         reloadWidget(context, appWidgetManager, appWidgetIds);
     }
 
-    private void makePostChore(String name){
+    private void makePost(String name){
         RequestBody requestBody = new MultipartBody.Builder()
                 .setType(MultipartBody.FORM)
                 .addFormDataPart("name", name)
                 .addFormDataPart("presser", Chore.DEFAULT_PRESSER)
-                .addFormDataPart("method", "chore")
-                .build();
-
-        Request request = new Request.Builder()
-                .url("https://radixenschede.nl/wouter/chores/index.php")
-                .post(requestBody)
-                .build();
-
-        try (Response response = client.newCall(request).execute()) {
-            if (!response.isSuccessful()) throw new IOException("Unexpected code " + response);
-
-            Headers responseHeaders = response.headers();
-            for (int i = 0; i < responseHeaders.size(); i++) {
-                System.out.println(responseHeaders.name(i) + ": " + responseHeaders.value(i));
-            }
-
-            Log.d("Widget", response.body().string());
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
-
-    private void makePostCar(){
-        RequestBody requestBody = new MultipartBody.Builder()
-                .setType(MultipartBody.FORM)
-                .addFormDataPart("delta", String.valueOf(Car.KM_DELTA * Car.KM_DELTA_DIRECTION))
-                .addFormDataPart("method", "car_km")
                 .build();
 
         Request request = new Request.Builder()
@@ -242,16 +187,10 @@ public class ChoresWidget extends AppWidgetProvider {
                 views.setViewVisibility(button_id, View.VISIBLE);
                 counter++;
             }
-            for (;counter <= 15; counter++){
+            for (;counter <= 16; counter++){
                 int button_id = context.getResources().getIdentifier("button_" + counter, "id", context.getPackageName());
                 views.setViewVisibility(button_id, View.INVISIBLE);
             }
-            int button_km_id = context.getResources().getIdentifier("button_16", "id", context.getPackageName());
-            views.setViewVisibility(button_km_id, View.VISIBLE);
-            views.setTextViewText(button_km_id, Status.car.getText());
-            views.setColor(button_km_id, "setBackgroundColor", R.color.car);
-            views.setOnClickPendingIntent(button_km_id, getPendingSelfIntentCar(context, button_km_id));
-
             // Instruct the widget manager to update the widget
             appWidgetManager.updateAppWidget(appWidgetId, views);
         }
