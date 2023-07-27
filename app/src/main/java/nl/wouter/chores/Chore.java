@@ -6,6 +6,8 @@ import android.text.Spanned;
 import android.util.Log;
 import android.widget.Toast;
 
+import androidx.core.content.ContextCompat;
+
 import java.util.Calendar;
 
 public class Chore {
@@ -39,6 +41,10 @@ public class Chore {
         this.countdown_time = countdown_time;
     }
 
+    public void setPressed_time(long pressed_time){
+        this.pressed_time = pressed_time;
+    }
+
     public String getName() {
         return name;
     }
@@ -49,6 +55,10 @@ public class Chore {
 
     public void setPresser(String presser) {
         this.presser = presser;
+    }
+
+    public int getPresses() {
+        return presses;
     }
 
     public Spanned getText() {
@@ -67,16 +77,18 @@ public class Chore {
     public boolean press(Context context) {
         long currentTime = Calendar.getInstance().getTime().getTime();
         long delta = currentTime - this.pressed_time;
-        Log.d("Widget", String.valueOf(delta));
+        Log.d(ChoresWidget.TAG, String.valueOf(delta));
         this.pressed_time = currentTime;
         if (delta - Chore.MS_TRIGGER_INTERVAL < 0) {
             this.presses += 1;
         } else {
             this.presses = 1;
         }
-        Log.d("Widget", String.valueOf(this.presses));
+        Log.d(ChoresWidget.TAG, String.valueOf(this.presses));
         if (this.presses == Chore.REQUIRED_PRESSES){
-            Toast.makeText(context, this.name + " marked", Toast.LENGTH_SHORT).show();
+            ContextCompat.getMainExecutor(context).execute(()  -> {
+                        Toast.makeText(context, this.name + " marked", Toast.LENGTH_SHORT).show();
+                    });
             return true;
         }
         return false;

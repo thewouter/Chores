@@ -19,7 +19,7 @@ public class WidgetUpdateWorker extends Worker {
     @NonNull
     @Override
     public Result doWork() {
-        Log.d("Widget", "doing work");
+        Log.d(ChoresWidget.TAG, "doing work");
         AppWidgetManager appWidgetManager = AppWidgetManager.getInstance(this.getApplicationContext());
         int[] appWidgetIds = appWidgetManager.getAppWidgetIds(new ComponentName(this.getApplicationContext(), ChoresWidget.class));
         Intent intent = new Intent(AppWidgetManager.ACTION_APPWIDGET_UPDATE, null, this.getApplicationContext(), ChoresWidget.class);
