@@ -11,6 +11,7 @@ import androidx.preference.PreferenceManager;
 
 import android.location.SettingInjectorService;
 import android.nfc.Tag;
+import android.os.Handler;
 import android.util.Log;
 import android.view.View;
 import android.widget.RemoteViews;
@@ -44,6 +45,8 @@ import okhttp3.Response;
 public class ChoresWidget extends AppWidgetProvider {
     private final OkHttpClient client = new OkHttpClient();
     public static final String TAG = "Widget_chores";
+
+    public static Handler handler;
     SharedPreferences sharedPreferences;
 
     @Override
@@ -67,6 +70,7 @@ public class ChoresWidget extends AppWidgetProvider {
 
     @Override
     public void onReceive(Context context, Intent intent) {
+        handler = new Handler();
         Log.d(TAG, "onReveive " + intent.getAction());
         if (intent.getAction().contains("newdata")){
             AppWidgetManager appWidgetManager = AppWidgetManager.getInstance(context);
@@ -105,14 +109,7 @@ public class ChoresWidget extends AppWidgetProvider {
             }
             Log.d(TAG, chores.toString());
             handlePress(context, name);
-            Thread thread = new Thread(() -> {
-                try  {
-                    makePost(name);
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-            });
-            thread.start();
+
 
             reloadWidget(context, appWidgetManager, appWidgetIds);
         }
@@ -136,6 +133,16 @@ public class ChoresWidget extends AppWidgetProvider {
                 Log.d(TAG, "Press passed");
                 chore.resetCountdown_time();
                 chore.setPresser(Chore.DEFAULT_PRESSER);
+
+                Thread thread = new Thread(() -> {
+                    try  {
+                        makePost(name);
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                });
+                thread.start();
+
                 return chore;
             }
             Log.d(TAG, "No match for " + chore.getName() + " with " + name);

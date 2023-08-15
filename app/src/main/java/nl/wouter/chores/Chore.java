@@ -86,9 +86,9 @@ public class Chore {
         }
         Log.d(ChoresWidget.TAG, String.valueOf(this.presses));
         if (this.presses == Chore.REQUIRED_PRESSES){
-            ContextCompat.getMainExecutor(context).execute(()  -> {
-                        Toast.makeText(context, this.name + " marked", Toast.LENGTH_SHORT).show();
-                    });
+
+            ChoresWidget.handler.post(() -> Toast.makeText(context, "Pressed " + getName(), Toast.LENGTH_SHORT).show());
+
             return true;
         }
         return false;
