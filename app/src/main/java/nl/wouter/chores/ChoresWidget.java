@@ -112,13 +112,6 @@ public class ChoresWidget extends AppWidgetProvider {
         super.onReceive(context, intent);
     }
 
-    private void handlePress(Context context, String name, long time){
-        Chore chore = handlePress(context, name);
-        if (chore != null) {
-            chore.setPressed_time(time);
-        }
-    }
-
     private Chore handlePress(Context context, String name){
         DataStoreSingleton dataStoreSingleton = DataStoreSingleton.getInstance();
         DataStoreHelper dataStoreHelper = new DataStoreHelper(dataStoreSingleton.getDataStore(context));
