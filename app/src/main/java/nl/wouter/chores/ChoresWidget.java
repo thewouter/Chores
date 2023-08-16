@@ -7,9 +7,8 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import androidx.preference.PreferenceManager;
 
-import android.location.SettingInjectorService;
+import androidx.datastore.preferences.core.Preferences;
 import android.nfc.Tag;
 import android.os.Handler;
 import android.util.Log;
@@ -17,17 +16,20 @@ import android.view.View;
 import android.widget.RemoteViews;
 import android.content.SharedPreferences;
 
+import androidx.datastore.rxjava2.RxDataStore;
 import androidx.work.ExistingPeriodicWorkPolicy;
 import androidx.work.PeriodicWorkRequest;
 import androidx.work.WorkManager;
 
 import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
 
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.IOException;
+import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.Locale;
 import java.util.concurrent.TimeUnit;
@@ -45,7 +47,7 @@ import okhttp3.Response;
 public class ChoresWidget extends AppWidgetProvider {
     private final OkHttpClient client = new OkHttpClient();
     public static final String TAG = "Widget_chores";
-
+    RxDataStore<Preferences> dataStore;
     public static Handler handler;
     SharedPreferences sharedPreferences;
 
@@ -71,7 +73,7 @@ public class ChoresWidget extends AppWidgetProvider {
     @Override
     public void onReceive(Context context, Intent intent) {
         handler = new Handler();
-        Log.d(TAG, "onReveive " + intent.getAction());
+        Log.d(TAG, "onReceive " + intent.getAction());
         if (intent.getAction().contains("newdata")){
             AppWidgetManager appWidgetManager = AppWidgetManager.getInstance(context);
             int[] appWidgetIds = appWidgetManager.getAppWidgetIds(new ComponentName(context, ChoresWidget.class));
@@ -92,25 +94,19 @@ public class ChoresWidget extends AppWidgetProvider {
             appWidgetManager.updateAppWidget(appWidgetIds, views);
             String name = intent.getAction().substring(0, intent.getAction().length() - 6);
             Log.d(TAG, name);
-            ArrayList<Chore> chores = Status.chores;
-            if (chores.size() == 0) {
-//                Gson gson = new Gson();
-//                SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
-//                String json = prefs.getString("chores", "");
-//                Status.chores = gson.fromJson( json, ArrayList.class);
-//                Log.d(TAG, "received settings");
-                Log.d(TAG, "missing chores, updating");
-                if(!Status.updating){
-                    onUpdate(context, appWidgetManager, appWidgetIds);
-                    Status.updating = true;
-                }
-                Status.redoList.add(new Redo(name));
-                return;
+            if (Status.chores.size() == 0) {
+
+                Gson gson = new Gson();
+                DataStoreSingleton dataStoreSingleton = DataStoreSingleton.getInstance();
+                DataStoreHelper dataStoreHelper = new DataStoreHelper(dataStoreSingleton.getDataStore(context));
+                String json = dataStoreHelper.getStringValue(ChoresWidgetConfigurationActivity.CHORES_LIST);
+                Log.d(TAG, "loaded: " + dataStoreHelper.getStringValue(ChoresWidgetConfigurationActivity.CHORES_LIST));
+                Type listType = new TypeToken<ArrayList<Chore>>(){}.getType();
+                Status.chores = gson.fromJson(json, listType);
+                Log.d(TAG, "reinitiated chores from datastore: " + Status.chores.toString());
             }
-            Log.d(TAG, chores.toString());
+            Log.d(TAG, Status.chores.toString());
             handlePress(context, name);
-
-
             reloadWidget(context, appWidgetManager, appWidgetIds);
         }
         super.onReceive(context, intent);
@@ -124,6 +120,9 @@ public class ChoresWidget extends AppWidgetProvider {
     }
 
     private Chore handlePress(Context context, String name){
+        DataStoreSingleton dataStoreSingleton = DataStoreSingleton.getInstance();
+        DataStoreHelper dataStoreHelper = new DataStoreHelper(dataStoreSingleton.getDataStore(context));
+
         for (Chore chore : Status.chores) {
             if (chore.getName().equals(name)) {
                 if (!chore.press(context)){
@@ -133,10 +132,11 @@ public class ChoresWidget extends AppWidgetProvider {
                 Log.d(TAG, "Press passed");
                 chore.resetCountdown_time();
                 chore.setPresser(Chore.DEFAULT_PRESSER);
+                saveChores(context);
 
                 Thread thread = new Thread(() -> {
                     try  {
-                        makePost(name);
+                        makePost(name, dataStoreHelper.getStringValue(ChoresWidgetConfigurationActivity.GROUP_NAME));
                     } catch (Exception e) {
                         e.printStackTrace();
                     }
@@ -151,8 +151,14 @@ public class ChoresWidget extends AppWidgetProvider {
     }
 
     private void loadData(Context context) throws IOException {
+        Log.d(TAG, "Loading data via API");
+        DataStoreSingleton dataStoreSingleton = DataStoreSingleton.getInstance();
+        DataStoreHelper dataStoreHelper = new DataStoreHelper(dataStoreSingleton.getDataStore(context));
+        String name = dataStoreHelper.getStringValue(ChoresWidgetConfigurationActivity.GROUP_NAME);
+        String url = "https://radixenschede.nl/wouter/chores/index.php" + (name.equals("") ? "" : "?group_name="+name);
+        Log.d(TAG, url);
         Request request = new Request.Builder()
-                .url("https://radixenschede.nl/wouter/chores/index.php")
+                .url(url)
                 .get()
                 .build();
         String data;
@@ -178,33 +184,36 @@ public class ChoresWidget extends AppWidgetProvider {
             if (chores.size() > 0) {
                 Status.chores = chores;
                 Log.d(TAG, String.valueOf(Status.redoList));
-                for (Redo redo: Status.redoList) {
-                    handlePress(context, redo.getName(), redo.getTime());
-                }
-                Status.redoList = new ArrayList<>();
                 Status.updating = false;
             }
         } catch (JSONException e) {
             e.printStackTrace();
         }
         Log.d(TAG, "Loaded");
-//        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
-//
-//        SharedPreferences.Editor editor = prefs.edit();
-//        Gson gson = new Gson();
-//        String json = gson.toJson(Status.chores);
-//        editor.putString("chores", json);
-//        editor.apply();
+
+//        Save the newly loaded chores list to the DataStore
+        saveChores(context);
+
         AppWidgetManager appWidgetManager = AppWidgetManager.getInstance(context);
         int[] appWidgetIds = appWidgetManager.getAppWidgetIds(new ComponentName(context, ChoresWidget.class));
         reloadWidget(context, appWidgetManager, appWidgetIds);
     }
 
-    private void makePost(String name){
+    private void saveChores(Context context){
+        Gson gson = new Gson();
+        String json = gson.toJson(Status.chores);
+        DataStoreSingleton dataStoreSingleton = DataStoreSingleton.getInstance();
+        DataStoreHelper dataStoreHelper = new DataStoreHelper(dataStoreSingleton.getDataStore(context));
+        dataStoreHelper.putStringValue(ChoresWidgetConfigurationActivity.CHORES_LIST, json);
+        Log.d(TAG, "Saved chores to DataStore");
+    }
+
+    private void makePost(String name, String group_name){
         RequestBody requestBody = new MultipartBody.Builder()
                 .setType(MultipartBody.FORM)
                 .addFormDataPart("name", name)
                 .addFormDataPart("presser", Chore.DEFAULT_PRESSER)
+                .addFormDataPart("group_name", group_name)
                 .build();
 
         Request request = new Request.Builder()
@@ -229,6 +238,7 @@ public class ChoresWidget extends AppWidgetProvider {
     public void reloadWidget(Context context, AppWidgetManager appWidgetManager, int[] appWidgetIds){
         // There may be multiple widgets active, so update all of them
         for (int appWidgetId : appWidgetIds) {
+            Log.d(TAG, "Appwidgetid: " + appWidgetId);
             // Construct the RemoteViews object
             RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.chores_widget);
 
@@ -238,29 +248,32 @@ public class ChoresWidget extends AppWidgetProvider {
             int counter = 1;
             Log.d(TAG, "start adding chores");
             if (Status.chores.size() < 1) {
-                Log.d(TAG, "Empty chores list, not updating");
-//                SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
-//                String value = prefs.getString("key-string", null);
+                Log.d(TAG, "no chores found");
+                Gson gson = new Gson();
+                DataStoreSingleton dataStoreSingleton = DataStoreSingleton.getInstance();
+                DataStoreHelper dataStoreHelper = new DataStoreHelper(dataStoreSingleton.getDataStore(context));
+                String json = dataStoreHelper.getStringValue(ChoresWidgetConfigurationActivity.CHORES_LIST);
+                Log.d(TAG, "loaded: " + dataStoreHelper.getStringValue(ChoresWidgetConfigurationActivity.CHORES_LIST));
+                Status.chores = gson.fromJson(json, ArrayList.class);
 
-            } else {
-                for (Chore chore : Status.chores) {
-                    Log.d(TAG, "initiating " + chore.getName());
-                    int button_id = context.getResources().getIdentifier("button_" + counter, "id", context.getPackageName());
-                    Log.d(TAG, String.valueOf(button_id));
-                    String name_color = String.format(Locale.ENGLISH, "rg_%02d", (int) ((100 * chore.getCountdown_time()) / chore.getReset_interval()));
-                    int color_id = context.getResources().getIdentifier(name_color, "color", context.getPackageName());
-                    Log.d(TAG, name_color);
-                    views.setColor(button_id, "setBackgroundColor", color_id);
-                    views.setTextViewText(button_id, chore.getText());
-                    views.setOnClickPendingIntent(button_id, getPendingSelfIntent(context, chore.getName(), button_id));
-                    views.setViewVisibility(button_id, View.VISIBLE);
-                    counter++;
-                }
-                for (; counter <= 16; counter++) {
-                    int button_id = context.getResources().getIdentifier("button_" + counter, "id", context.getPackageName());
-                    Log.d(TAG, String.format("Hidden %d", counter));
-                    views.setViewVisibility(button_id, View.INVISIBLE);
-                }
+            }
+            for (Chore chore : Status.chores) {
+                Log.d(TAG, "initiating " + chore.getName());
+                int button_id = context.getResources().getIdentifier("button_" + counter, "id", context.getPackageName());
+                Log.d(TAG, String.valueOf(button_id));
+                String name_color = String.format(Locale.ENGLISH, "rg_%02d", (int) ((100 * chore.getCountdown_time()) / chore.getReset_interval()));
+                int color_id = context.getResources().getIdentifier(name_color, "color", context.getPackageName());
+                Log.d(TAG, name_color);
+                views.setColor(button_id, "setBackgroundColor", color_id);
+                views.setTextViewText(button_id, chore.getText());
+                views.setOnClickPendingIntent(button_id, getPendingSelfIntent(context, chore.getName(), button_id));
+                views.setViewVisibility(button_id, View.VISIBLE);
+                counter++;
+            }
+            for (; counter <= 16; counter++) {
+                int button_id = context.getResources().getIdentifier("button_" + counter, "id", context.getPackageName());
+                Log.d(TAG, String.format("Hidden %d", counter));
+                views.setViewVisibility(button_id, View.INVISIBLE);
             }
             // Instruct the widget manager to update the widget
             appWidgetManager.updateAppWidget(appWidgetId, views);
@@ -284,7 +297,7 @@ public class ChoresWidget extends AppWidgetProvider {
 
     @Override
     public void onDisabled(Context context) {
-        // TODO: Remove PeriodicWorkerRequest
-        // Enter relevant functionality for when the last widget is disabled
+        WorkManager workManager = WorkManager.getInstance(context);
+        workManager.cancelAllWorkByTag("WidgetUpdateWorker");
     }
 }

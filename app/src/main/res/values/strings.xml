@@ -4,4 +4,6 @@
     <string name="add_widget">Add widget</string>
     <string name="app_widget_description">Track your chores</string>
     <string name="b1">B1</string>
+    <string name="group_name">Group name</string>
+    <string name="save">Save</string>
 </resources>
